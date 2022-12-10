@@ -1,0 +1,13 @@
+## ml_1m
+DCRS
+./run.sh --model=DCRS --dataset=ml_1m_NG --lr=0.05 --batch_size=512  --dropout=[0.3,0.3] --epochs=20  --lamda=0.1   --num_groups=18 --DCRSPara=ui:1.0,ui_adver:0.5,uc_adver:0.5,sg:1,temp:1 --layers=[128]
+
+##ml_10M100K
+
+DCRS
+./run.sh --model=DCRS --dataset=ml_10M100K_NG --lr=0.1 --batch_size=512  --dropout=[0.3,0.3] --epochs=20  --lamda=0.1   --num_groups=19 --DCRSPara=ui:1.0,ui_adver:0.5,uc_adver:0.5,sg:1,temp:1 --layers=[128]
+
+##amazon_books
+DCRS
+./run.sh --model=DCRS --dataset=amazon_NG --lr=0.05 --batch_size=512 --dropout=[0.3,0.3] --epochs=30 --lamda=0.2 --num_groups=141 --DCRSPara=ui:1.0,ui_adver:0.1,uc_adver:0.1,sg:1,temp:1 --layers=[128]
+
