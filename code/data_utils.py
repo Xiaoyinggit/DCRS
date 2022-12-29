@@ -294,7 +294,7 @@ class FMData(data.Dataset):
             confounder_prior += cur_user_pos_dist 
         
         confounder_prior = confounder_prior/len(user_hist_cat_dist)
-        print('confounder_prior: ', confounder_prior, 'sum: ', np.sum(confounder_prior))
+        #print('confounder_prior: ', confounder_prior, 'sum: ', np.sum(confounder_prior))
 
         return user_hist_cat_dist, confounder_prior
 
