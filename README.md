@@ -7,7 +7,7 @@ This is the pytorch implementation of our paper at WSDM 2023:
 
 
   # Usage
-  Due to file size limit, please first download [all experiment data](https://1drv.ms/u/s!AjZsDFlDEQ-NgUyU6kEqkfLtBPad?e=jUanc3), and put the downloaded data folder in the current directory ('./').
+  Due to file size limit, please first download [all experiment data](https://1drv.ms/u/s!AjZsDFlDEQ-NgUyU6kEqkfLtBPad?e=S63cPG), and put the downloaded data folder in the current directory ('./').
 
   ## Training
 
