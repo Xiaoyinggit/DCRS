@@ -87,7 +87,7 @@ parser.add_argument("--lamda",
     default=0.1, 
     help="regularizer for bilinear layers")
 parser.add_argument("--topN", 
-    default='[5,10,20,50]',  
+    default='[10,20]',  
     help="the recommended item num")
 parser.add_argument("--batch_norm", 
     type=int,
@@ -100,15 +100,11 @@ parser.add_argument("--gpu",
     type=str,
     default="0",
     help="gpu card ID")
-parser.add_argument("--snake_merge_cat", 
-    type=bool,
-    default=False,
-    help="whether use snake merge")
 parser.add_argument(
     '--DCRSPara',
     default='0:0',
     type=lambda x: {k:float(v) for k,v in (i.split(':') for i in x.split(','))},
-    help='comma-separated field:position pairs, e.g. Date:0,Amount:2,Payee:5,Memo:9'
+    help='comma-separated field:position pairs, e.g.,ci_adver:0.5,cd_adver:0.5,sg:1'
 )
 args = parser.parse_args()
 print("args:", args)
@@ -175,7 +171,7 @@ elif args.optimizer == 'Momentum':
 
 ###############################  TRAINING ############################
 
-count, best_recall, best_gt_entropy = 0, -100, 100
+count, best_re = 0, -100
 best_test_result = []
 for epoch in range(args.epochs):
     model.train() # Enable dropout and batch_norm
@@ -193,9 +189,9 @@ for epoch in range(args.epochs):
         model.zero_grad()
         debug_str = ''
         if args.model in ['DCRS']:
-            prediction, t_s_loss, ui_loss, ui_adver_loss, uc_addi_loss, debug_info = model(user_features, user_feature_values, item_features, item_feature_values,label) 
-            t_loss = t_s_loss + ui_loss + ui_adver_loss + uc_addi_loss
-            debug_str = 't_s_loss:%f, ui_loss:%f, ui_adver_loss:%f, uc_addi_loss:%f, ui_adver_hit_r:%f, uc_adver_hit_r:%f:'%(t_s_loss, ui_loss,  ui_adver_loss, uc_addi_loss, debug_info['adver_inverse_1'], debug_info['adver_inverse_0'])
+            prediction, t_s_loss, ui_loss, ci_adver_loss, cd_addi_loss, debug_info = model(user_features, user_feature_values, item_features, item_feature_values,label) 
+            t_loss = t_s_loss + ui_loss + ci_adver_loss + cd_addi_loss
+            debug_str = 't_s_loss:%f, ui_loss:%f, ci_adver_loss:%f, cd_addi_loss:%f:'%(t_s_loss, ui_loss,  ci_adver_loss, cd_addi_loss)
         else:
             prediction, t_loss= model(user_features, user_feature_values, item_features, item_feature_values, label)
         norm_loss =args.lamda * model.embeddings.weight.norm()
@@ -211,30 +207,20 @@ for epoch in range(args.epochs):
         
         model.eval()
         train_RMSE = evaluate.RMSE(model, args.model, train_loader)
-        valid_auc_re, test_auc_re, calibration_results, valid_recall, test_recall, valid_cat_recall, test_cat_recall = evaluate.candidate_ranking(model, args.model, valid_dataList, \
+        valid_auc_re, test_auc_re, calibration_results, valid_recall, test_recall = evaluate.candidate_ranking(model, args.model, valid_dataList, \
                     test_dataList, train_dataset.train_dict, user_feature, item_feature,\
                     all_item_features, all_item_feature_values, eval(args.topN), \
                     train_dataset.user_hist_cat_dist ,num_groups, user_candidate=user_candidates,
-                    snake_merge_cat=args.snake_merge_cat)
+)
  
         print('---'*18)
         print("Runing Epoch {:03d} ".format(epoch) + "costs " + time.strftime(
                             "%H: %M: %S", time.gmtime(time.time()-start_time)))
         print('[TRAIN] '+debug_str)
-        #if 'DNFM' in args.model:
-        #    # debug cat ind
-        #    for cat_n, id in cat2ind.items():
-        #        print('~~~~~~~cat_name:%s: %d~~~~~'%(cat_n, id))
-        #        id_emb = model.get_fid_emb(id)
-        #       print(id_emb)
  
 
  
-        evaluate.print_results(train_RMSE, valid_auc_re, test_auc_re, calibration_results, valid_recall, test_recall, valid_cat_recall, test_cat_recall)
-
-        if ( valid_recall[0][0] > best_recall): # auc for selection 
-            best_recall, best_epoch =  valid_recall[0][0],  epoch
-            best_test_result = ( test_auc_re ,calibration_results) 
+        evaluate.print_results(train_RMSE, valid_auc_re, test_auc_re, calibration_results, valid_recall, test_recall)
         
         print("------------ model, saving...------------")
         if args.out:
@@ -246,7 +232,6 @@ for epoch in range(args.epochs):
                 torch.save(model, model_save_path)
                 np.save('debug/%s_user_cat_collect_%depoch_%sdataset.npy'%(model_save_path_perfix,epoch,args.dataset), calibration_results[1])
 
-print("End. Best epoch {:03d}".format(best_epoch))
-evaluate.print_results(None, None, best_test_result[0], best_test_result[1], None, None, None, None)
+
 
 

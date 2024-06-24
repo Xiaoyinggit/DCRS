@@ -19,6 +19,10 @@ class DCRS(nn.Module):
         batch_norm: bool type, whether to use batch norm or not,
         drop_prob: list of the dropout rate for FM and MLP,
         pretrain_FM: the pre-trained FM weights.
+        DCRS_para: hyper-parameter for DCRS.
+        ---ci_adver: loss weight of category-independent loss. 
+        ---cd_adver: loss weight of category-dependent loss
+        ---sg: whether to stop gradient for category-independent representation when learning category-depdentent representation.
         """
         self.num_features = num_features
         self.num_groups = num_groups
@@ -69,7 +73,6 @@ class DCRS(nn.Module):
         self.ui_criterion = nn.BCEWithLogitsLoss(reduction='sum')
         self.criterion = nn.BCEWithLogitsLoss(reduction='sum')
         self.adverse_criterion= nn.CrossEntropyLoss(reduction='none')
-        self.debug_info = {}
 
         self._init_weight_()
 
@@ -104,24 +107,9 @@ class DCRS(nn.Module):
         if is_inverse ==1:
             in_emb.register_hook(lambda grad: -grad)  
 
-        cat_pred_logits = self.cat_pred_layer(in_emb) / self.DCRS_para['temp']
+        cat_pred_logits = self.cat_pred_layer(in_emb) 
         loss_vec = self.adverse_criterion(input=cat_pred_logits, target=cat_dist)
         cat_loss = torch.sum(loss_vec) 
-
-        ## for debug, TODO debug.
-        # cat_pred_prob = F.softmax(cat_pred_logits, dim=-1)
-        # gt_cat_num = torch.sum(torch.gt(cat_dist, 0), dim =1).cpu().numpy()
-        # max_cat_num = np.max(gt_cat_num)
-        # _, cat_pred_prob_topK_indices = torch.topk(cat_pred_prob, k=max_cat_num, dim=1)
-        # cat_pred_prob_topK_indices = cat_pred_prob_topK_indices.cpu().numpy().tolist()
-        # pred_ind, wei = [], []
-        # for i in range(len(cat_pred_prob_topK_indices)):
-        #     for j in range(gt_cat_num[i]):
-        #         pred_ind.append([i, cat_pred_prob_topK_indices[i][j]])
-        #         wei.append(1.0/gt_cat_num[i])
-        # pred_ind, wei = torch.tensor(pred_ind).cuda(), torch.tensor(wei).cuda()
-        # hit_r = torch.sum(torch.gt(cat_dist[pred_ind[:,0], pred_ind[:,1]],0)*wei)/(torch.sum(wei)+0.0001)
-        self.debug_info['adver_inverse_%d'%is_inverse] = 0 
         
         return cat_loss
 
@@ -142,7 +130,6 @@ class DCRS(nn.Module):
 
         # cat_values
         item_cat_dist = feature_values[:, -self.num_groups:].squeeze(dim=-1)
-        self.debug_info['item_cat_dist'] = item_cat_dist 
 
         # Bi-Interaction layer
         sum_square_embed = nonzero_embed.sum(dim=1).pow(2)
@@ -160,17 +147,16 @@ class DCRS(nn.Module):
         ## ui_loss  & ui_adversary loss
         label = torch.reshape(label , (-1,1))
         ui_pred = self.ui_prediction(user_emb_item)
-        self.debug_info['ui_pred_1'] = ui_pred.view(-1)
         ui_loss = self.ui_criterion(input=ui_pred, target=label)
+
         ## for user_emb_item, we hope it cannot predict category
         ui_adver_loss = self.get_adversary_loss(user_emb_item.clone(),item_cat_dist, is_inverse= 1)
-        ui_loss = self.DCRS_para['ui']*ui_loss 
-        ui_adver_loss = self.DCRS_para['ui_adver']*ui_adver_loss 
+        ui_adver_loss = self.DCRS_para['ci_adver']*ui_adver_loss 
 
 
-        ## uc_loss & uc_adversary_loss
+        ## uc_adversary_loss
         uc_adver_loss = self.get_adversary_loss(user_emb_cat.clone(),item_cat_dist, is_inverse=0)
-        uc_addi_loss =  self.DCRS_para['uc_adver']*uc_adver_loss
+        uc_addi_loss =  self.DCRS_para['cd_adver']*uc_adver_loss
 
 
         ## combination loss
@@ -180,12 +166,11 @@ class DCRS(nn.Module):
             user_emb = torch.cat((user_emb_item, user_emb_cat), dim=1)
         logits = self.prediction(user_emb) # prediction layer_d * 1
         pred_ui, pred_uc = torch.split(self.prediction.weight,self.predict_size//2 , dim =1) #[1, predict_size//2]
-        self.debug_info['ui_pred'] = torch.matmul(user_emb_item, pred_ui.t()).view(-1)
-        self.debug_info['uc_pred'] =  torch.matmul(user_emb_cat, pred_uc.t()).view(-1)
+       
         # bias addition
         feature_bias = self.biases(features)
         feature_bias = (feature_bias * feature_values).sum(dim=1)
         logits = logits + feature_bias + self.bias_
         t_loss = self.criterion(input=logits, target=label)
 
-        return logits.view(-1), t_loss, ui_loss, ui_adver_loss, uc_addi_loss, self.debug_info
+        return logits.view(-1), t_loss, ui_loss, ui_adver_loss, uc_addi_loss, None

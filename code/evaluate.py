@@ -74,12 +74,11 @@ def calculate_auc(dataList,model, model_name, user_feature, user_hist_cat_dist, 
         
         
         if model_name in ['DCRS']:
-            prediction, t_s_loss, ui_loss, _, uc_addi_loss, debug_info = model(user_features_l, user_feature_values_l, item_features_l, item_feature_values_l,label_l) 
+            prediction, t_s_loss, ui_loss, _, uc_addi_loss, _ = model(user_features_l, user_feature_values_l, item_features_l, item_feature_values_l,label_l) 
         else:
             prediction, _ = model(user_features_l, user_feature_values_l, item_features_l, item_feature_values_l, label_l)
 
         pred_score = torch.sigmoid(prediction).detach().cpu().numpy()
-        #pred_score = torch.sigmoid(debug_info['ui_pred_1']).detach().cpu().numpy()
         label_l = label_l.cpu().numpy()
 
         # for case only contains one class , just ignore
@@ -105,7 +104,7 @@ def calculate_auc(dataList,model, model_name, user_feature, user_hist_cat_dist, 
 
 def candidate_ranking(model, model_name, valid_dataList, test_dataList, train_dict, \
                       user_feature,item_feature, all_item_features, all_item_feature_values,\
-                       topN, user_hist_cat_dist, num_groups, user_candidate=None, snake_merge_cat=False):
+                       topN, user_hist_cat_dist, num_groups, user_candidate=None):
     """evaluate the auc & top-n diversity"""
 
     # first calculate all auc
@@ -148,37 +147,25 @@ def candidate_ranking(model, model_name, valid_dataList, test_dataList, train_di
 
        
         if model_name in ['DCRS']:
-            prediction, t_s_loss, ui_loss,_, uc_addi_loss, debug_info = model(user_features_l, user_feature_values_l, item_features_l, item_feature_values_l,fake_label_l) 
+            prediction, t_s_loss, ui_loss,_, uc_addi_loss, _ = model(user_features_l, user_feature_values_l, item_features_l, item_feature_values_l,fake_label_l) 
         else:
             prediction, _ = model(user_features_l, user_feature_values_l, item_features_l, item_feature_values_l, fake_label_l)
 
-        if snake_merge_cat:
-            assert model_name in ['DCRS'] 
-            prediction = prediction.detach().cpu().numpy().tolist()
-            candidate_cat_pred = debug_info['uc_pred'].detach().cpu().numpy().tolist()
-            item_cat_dist = debug_info['item_cat_dist'].detach().cpu().numpy().tolist()
-            user_pred_topK = get_predTopK_SM(candidates, prediction, item_cat_dist, candidate_cat_pred, topN)
-            user_pred.append(user_pred_topK)
+        
+        pred_prob =  torch.sigmoid(prediction) 
 
-        else:
-           pred_prob =  torch.sigmoid(prediction) 
+        _, indices = torch.topk(pred_prob, topN[-1])
+        pred_items = torch.tensor(candidates)[indices].cpu().numpy().tolist()
 
-           _, indices = torch.topk(pred_prob, topN[-1])
-           pred_items = torch.tensor(candidates)[indices].cpu().numpy().tolist()
-
-           user_pred.append(pred_items)
+        user_pred.append(pred_items)
 
     
     print('~~~~~~~~test~~~~~~~~~') 
     valid_recall = computeTopNAccuracy(user_gt_valid, user_pred, topN)
     test_recall = computeTopNAccuracy(user_gt_test, user_pred, topN)
     calibration_results = calibration(item_feature, test_dataList, train_dict, user_pred, topN, num_groups)
-
-    # check for recall rate of category
-    valid_cat_recall = computeTopNCatRecall(user_gt_valid, user_pred, topN, item_feature, num_group=num_groups) 
-    test_cat_recall = computeTopNCatRecall(user_gt_test, user_pred, topN, item_feature, num_group=num_groups) 
                   
-    return valid_auc_re, test_auc_re, calibration_results, valid_recall, test_recall, valid_cat_recall, test_cat_recall
+    return valid_auc_re, test_auc_re, calibration_results, valid_recall, test_recall
 
 
 
@@ -416,7 +403,7 @@ def calibration_pure(item_feature, test_dataList, user_pred, topN, num_groups, i
     CC = np.around(np.mean(CC, 0), 4).tolist()
     return  C_EN, CC
 
-def print_results(train_RMSE, valid_auc_re, test_auc_re, calibration_results, valid_recall, test_recall, valid_cat_recall, test_cat_recall):
+def print_results(train_RMSE, valid_auc_re, test_auc_re, calibration_results, valid_recall, test_recall):
     """output the evaluation results."""
     if train_RMSE is not None:
         print("[Train]: RMSE: {:.4f}".format(train_RMSE))
@@ -440,12 +427,4 @@ def print_results(train_RMSE, valid_auc_re, test_auc_re, calibration_results, va
         print("[Test_RECALL]: Recall: {} NDCG: {}".format(
                             '-'.join([str(x) for x in test_recall[0]]), 
                             '-'.join([str(x) for x in test_recall[1]])))
-
-    if valid_cat_recall is not None:
-        print("[Valid_Cat_Recall]: catRecall: {} ".format(
-                            '-'.join([str(x) for x in valid_cat_recall]))) 
-
-    if test_cat_recall is not None:
-        print("[Test_Cat_Recall]: catRecall: {} ".format(
-                            '-'.join([str(x) for x in test_cat_recall]))) 
 
